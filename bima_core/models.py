@@ -412,6 +412,7 @@ class Photo(PhotoPermissionMixin, SoftDeleteModelMixin, models.Model):
 
     # video and audio info
     youtube_code = models.CharField(_('YouTube code'), max_length=100, blank=True)
+    vimeo_code = models.CharField(_('Vimeo code'), max_length=100, blank=True)
     soundcloud_code = models.CharField(_('SoundCloud code'), max_length=100, blank=True)
     video_thumbnail = models.ImageField(upload_to=video_thumbnail_path,
                                         max_length=200,
@@ -441,6 +442,10 @@ class Photo(PhotoPermissionMixin, SoftDeleteModelMixin, models.Model):
     @property
     def is_photo(self):
         return FileType.get_url_file_type(self.image_file) == FileType.photo
+
+    @property
+    def is_file(self):
+        return FileType.get_url_file_type(self.image_file) == FileType.file
 
     @property
     def file_type(self):
@@ -569,7 +574,7 @@ class Photo(PhotoPermissionMixin, SoftDeleteModelMixin, models.Model):
                 if exif_info:
                     metadata.update({
                         'exif_date': get_exif_datetime(exif_info, 'EXIF DateTimeOriginal'),
-                        'camera_model': get_exif_info(exif_info, 'Image Model', default=''),
+                        'camera_model': get_exif_info(exif_info, 'Image Model', default='')[:50],
                         'orientation': get_exif_info(exif_info, 'Image Orientation'),
                         'longitude': get_exif_longitude(exif_info, 'GPS GPSLongitude'),
                         'latitude': get_exif_latitude(exif_info, 'GPS GPSLatitude'),

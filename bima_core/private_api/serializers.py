@@ -25,6 +25,7 @@ from bima_core.tasks import up_image_to_s3
 from bima_core.translation import TranslationMixin
 from bima_core.utils import belongs_to_admin_group, is_iterable, is_staff_or_superuser
 
+from ..vimeo.models import VimeoAccount
 from ..youtube.models import YoutubeAccount, YoutubeChannel
 
 from .fields import UserPermissionsField, PermissionField
@@ -407,7 +408,7 @@ class BasePhotoSerializer(ValidatePermissionSerializer, ThumborSerializerMixin, 
     class Meta:
         model = Photo
         fields = ('id', 'title', 'description', 'permissions', 'upload_status',
-                  'file_type', 'youtube_code', 'soundcloud_code')
+                  'file_type', 'youtube_code', 'vimeo_code', 'soundcloud_code')
 
 
 # Extra info serializers
@@ -664,6 +665,16 @@ class AlbumSerializer(ThumborSerializerMixin, TranslationSerializerMixin, BaseAl
         return value
 
 
+class AlbumListSerializer(TranslationSerializerMixin, serializers.ModelSerializer):
+    """
+    Album list serializer.
+    """
+
+    class Meta:
+        model = Album
+        fields = ('id', 'title', 'description', )
+
+
 class GallerySerializer(ThumborSerializerMixin, TranslationSerializerMixin, serializers.ModelSerializer):
     """
     Gallery serializer.
@@ -675,6 +686,7 @@ class GallerySerializer(ThumborSerializerMixin, TranslationSerializerMixin, seri
     extra_info = serializers.SerializerMethodField()
     permissions = PermissionField()
     image_file_type = serializers.SerializerMethodField()
+    photos = serializers.SerializerMethodField()
 
     class Meta:
         model = Gallery
@@ -700,12 +712,28 @@ class GallerySerializer(ThumborSerializerMixin, TranslationSerializerMixin, seri
         photo = obj.photo
         return photo and photo.file_type
 
+    def get_photos(self, obj):
+        """
+        Returns no repeated ids
+        """
+        return obj.photos.all().distinct().values_list('id', flat=True)
+
     def validate_cover(self, value):
         if not self.instance.galleries_membership.filter(photo_id=value.id).exists():
             raise ValidationError(
                 _('Invalid pk "{pk}" - photo does not exist into current gallery.'.format(pk=value.id)), code='cover'
             )
         return value
+
+
+class GalleryListSerializer(TranslationSerializerMixin, serializers.ModelSerializer):
+    """
+    Gallery list serializer.
+    """
+
+    class Meta:
+        model = Gallery
+        fields = ('id', 'title', 'description', )
 
 
 class GalleryMembershipSerializer(ValidatePermissionSerializer, serializers.ModelSerializer):
@@ -831,6 +859,7 @@ class PhotoSerializer(BasePhotoSerializer):
     extra_info = serializers.SerializerMethodField()
     download_permission = serializers.SerializerMethodField(method_name='has_download_permission')
     can_upload_youtube = serializers.SerializerMethodField()
+    can_upload_vimeo = serializers.SerializerMethodField()
 
     class Meta:
         model = Photo
@@ -839,8 +868,8 @@ class PhotoSerializer(BasePhotoSerializer):
                   'altitude', 'owner', 'categories', 'keywords', 'created_at', 'modified_at', 'album', 'extra_info',
                   'permissions', 'image_flickr', 'names', 'copyright', 'author', 'internal_usage_restriction',
                   'external_usage_restriction', 'identifier', 'original_file_name', 'categorize_date', 'size',
-                  'upload_status', 'file_type', 'youtube_code', 'soundcloud_code', 'download_permission',
-                  'can_upload_youtube')
+                  'upload_status', 'file_type', 'youtube_code', 'vimeo_code', 'soundcloud_code', 'download_permission',
+                  'can_upload_youtube', 'can_upload_vimeo')
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -873,6 +902,9 @@ class PhotoSerializer(BasePhotoSerializer):
 
     def get_can_upload_youtube(self, obj):
         return YoutubeChannel.configured_channel_exist()
+
+    def get_can_upload_vimeo(self, obj):
+        return VimeoAccount.objects.exists()
 
     def validate(self, attrs):
         """
@@ -1103,3 +1135,18 @@ class PhotoYoutubeSerializer(serializers.ModelSerializer):
 class YoutubeSerializer(serializers.Serializer):
     photo = PhotoYoutubeSerializer()
     youtube_channels = YoutubeChannelSerializer(many=True)
+
+
+# Vimeo serializers
+
+
+class VimeoAccountSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = VimeoAccount
+        fields = ('id', 'name', 'username')
+        read_only_fields = fields
+
+
+class VimeoSerializer(serializers.Serializer):
+    photo = PhotoYoutubeSerializer()
+    vimeo_accounts = VimeoAccountSerializer(many=True)
