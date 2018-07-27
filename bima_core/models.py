@@ -602,6 +602,12 @@ class Photo(PhotoPermissionMixin, SoftDeleteModelMixin, models.Model):
             setattr(self.exif, k, v)
         self.exif.save()
 
+        # geoposition: latitude, longitude from exif
+        if self.longitude:
+            self.position.longitude = self.longitude
+        if self.latitude:
+            self.position.latitude = self.latitude
+
         # commit changes
         if commit:
             self.save()
