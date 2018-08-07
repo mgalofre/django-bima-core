@@ -742,11 +742,11 @@ class GalleryMembershipSerializer(ValidatePermissionSerializer, serializers.Mode
     Allows a photo to belong to a gallery.
     """
 
-    permissions = PermissionField()
+    # permissions = PermissionField()
 
     class Meta:
         model = GalleryMembership
-        fields = ('id', 'photo', 'gallery', 'added_at', 'permissions', )
+        fields = ('id', 'gallery', )
 
     def validate(self, attrs):
         attrs = super().validate(attrs)
@@ -854,6 +854,7 @@ class PhotoSerializer(BasePhotoSerializer):
     external_usage_restriction = serializers.PrimaryKeyRelatedField(
         queryset=UsageRight.objects.all(), required=False, allow_null=True)
     categories = serializers.PrimaryKeyRelatedField(queryset=DAMTaxonomy.objects.active(), required=False, many=True)
+    galleries = GalleryMembershipSerializer(many=True, required=False)
     keywords = KeywordSerializer(required=False, many=True)
     names = NameSerializer(required=False)
     extra_info = serializers.SerializerMethodField()
@@ -869,7 +870,7 @@ class PhotoSerializer(BasePhotoSerializer):
                   'permissions', 'image_flickr', 'names', 'copyright', 'author', 'internal_usage_restriction',
                   'external_usage_restriction', 'identifier', 'original_file_name', 'categorize_date', 'size',
                   'upload_status', 'file_type', 'youtube_code', 'vimeo_code', 'soundcloud_code', 'download_permission',
-                  'can_upload_youtube', 'can_upload_vimeo')
+                  'can_upload_youtube', 'can_upload_vimeo', 'galleries')
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -929,6 +930,7 @@ class PhotoSerializer(BasePhotoSerializer):
         image = validated_data.pop('image', None)
         keywords = validated_data.pop('keywords', None)
         names = validated_data.pop('names', None)
+        galleries = validated_data.pop('galleries', None)
         # create or update photo instance
         photo = super().update(instance, validated_data) if instance else super().create(validated_data)
 
