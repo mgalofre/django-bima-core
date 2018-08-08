@@ -932,7 +932,17 @@ class PhotoSerializer(BasePhotoSerializer):
         names = validated_data.pop('names', None)
         galleries = validated_data.pop('galleries', None)
         # create or update photo instance
-        photo = super().update(instance, validated_data) if instance else super().create(validated_data)
+        if instance:
+            photo = super().update(instance, validated_data)
+        else:
+            photo = super().create(validated_data)
+            for gallery in galleries:
+                if self.is_create_action and not gallery['gallery'].is_membership(self.user):
+                    raise PermissionDenied
+                added_by = self.context['request'].user
+                gallery_member, created = GalleryMembership.objects.get_or_create(
+                    photo=photo, gallery=gallery['gallery'], defaults={'added_by': added_by}
+                )
 
         # will update image content, language tagged keywords and tagged names if has valid data
         if image is not None:
