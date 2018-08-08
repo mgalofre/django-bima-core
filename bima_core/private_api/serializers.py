@@ -742,11 +742,11 @@ class GalleryMembershipSerializer(ValidatePermissionSerializer, serializers.Mode
     Allows a photo to belong to a gallery.
     """
 
-    # permissions = PermissionField()
+    permissions = PermissionField()
 
     class Meta:
         model = GalleryMembership
-        fields = ('id', 'gallery', )
+        fields = ('id', 'photo', 'gallery', 'added_at', 'permissions',)
 
     def validate(self, attrs):
         attrs = super().validate(attrs)
@@ -768,6 +768,17 @@ class GalleryMembershipSerializer(ValidatePermissionSerializer, serializers.Mode
             return self.Meta.model.objects.get(photo=validated_data['photo'], gallery=validated_data['gallery'])
         except self.Meta.model.DoesNotExist:
             return super().create(validated_data)
+
+
+class GalleryMembershipCreateSerializer(serializers.ModelSerializer):
+    """
+    Serializer for create linkks between photos and galleries.
+    Allows a photo to belong to a gallery.
+    """
+
+    class Meta:
+        model = GalleryMembership
+        fields = ('id', 'gallery', )
 
 
 class TaxonomyListSerializer(TranslationSerializerMixin, BaseTaxonomySerializer):
@@ -854,7 +865,6 @@ class PhotoSerializer(BasePhotoSerializer):
     external_usage_restriction = serializers.PrimaryKeyRelatedField(
         queryset=UsageRight.objects.all(), required=False, allow_null=True)
     categories = serializers.PrimaryKeyRelatedField(queryset=DAMTaxonomy.objects.active(), required=False, many=True)
-    galleries = GalleryMembershipSerializer(many=True, required=False)
     keywords = KeywordSerializer(required=False, many=True)
     names = NameSerializer(required=False)
     extra_info = serializers.SerializerMethodField()
@@ -870,7 +880,7 @@ class PhotoSerializer(BasePhotoSerializer):
                   'permissions', 'image_flickr', 'names', 'copyright', 'author', 'internal_usage_restriction',
                   'external_usage_restriction', 'identifier', 'original_file_name', 'categorize_date', 'size',
                   'upload_status', 'file_type', 'youtube_code', 'vimeo_code', 'soundcloud_code', 'download_permission',
-                  'can_upload_youtube', 'can_upload_vimeo', 'galleries')
+                  'can_upload_youtube', 'can_upload_vimeo',)
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -878,6 +888,9 @@ class PhotoSerializer(BasePhotoSerializer):
             self.fields['photo_type'] = serializers.PrimaryKeyRelatedField(
                 queryset=PhotoType.objects.all(), required=False, allow_null=True)
             self.Meta.fields += ('photo_type',)
+        if self.is_create_action and settings.PHOTO_GALLERIES_REQUIRED:
+            self.fields['photo_galleries'] = GalleryMembershipCreateSerializer(many=True, required=False)
+            self.Meta.fields += ('photo_galleries',)
 
     def get_thumbor_fieldsets(self):
         """
@@ -920,6 +933,11 @@ class PhotoSerializer(BasePhotoSerializer):
             raise PermissionDenied
         if self.is_update_action and not self.instance.is_membership(self.user):
                 raise PermissionDenied
+
+        if self.is_create_action and settings.PHOTO_GALLERIES_REQUIRED:
+            for gallery in attrs['photo_galleries']:
+                if self.is_create_action and not gallery['gallery'].is_membership(self.user):
+                    raise PermissionDenied
         return attrs
 
     def update_or_create(self, validated_data, instance=None, cleanup=True):
@@ -930,19 +948,9 @@ class PhotoSerializer(BasePhotoSerializer):
         image = validated_data.pop('image', None)
         keywords = validated_data.pop('keywords', None)
         names = validated_data.pop('names', None)
-        galleries = validated_data.pop('galleries', None)
+
         # create or update photo instance
-        if instance:
-            photo = super().update(instance, validated_data)
-        else:
-            photo = super().create(validated_data)
-            for gallery in galleries:
-                if self.is_create_action and not gallery['gallery'].is_membership(self.user):
-                    raise PermissionDenied
-                added_by = self.context['request'].user
-                gallery_member, created = GalleryMembership.objects.get_or_create(
-                    photo=photo, gallery=gallery['gallery'], defaults={'added_by': added_by}
-                )
+        photo = super().update(instance, validated_data) if instance else super().create(validated_data)
 
         # will update image content, language tagged keywords and tagged names if has valid data
         if image is not None:
@@ -955,7 +963,20 @@ class PhotoSerializer(BasePhotoSerializer):
         return photo
 
     def create(self, validated_data):
-        return self.update_or_create(validated_data)
+        galleries = None
+        if settings.PHOTO_GALLERIES_REQUIRED:
+            galleries = validated_data.pop('photo_galleries', None)
+        photo = self.update_or_create(validated_data)
+
+        if not galleries:
+            return None
+
+        for gallery in galleries:
+            added_by = self.context['request'].user
+            gallery_member, created = GalleryMembership.objects.get_or_create(
+                photo=photo, gallery=gallery['gallery'], defaults={'added_by': added_by}
+            )
+        return photo
 
     def update(self, instance, validated_data):
         return self.update_or_create(validated_data, instance)
