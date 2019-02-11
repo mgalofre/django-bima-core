@@ -63,10 +63,18 @@ class GroupFilter(FilterMixin, django_filters.FilterSet):
 
 class UserFilter(FilterMixin, FullNameFilterMixin, django_filters.FilterSet):
     full_name = django_filters.MethodFilter()
+    is_active = django_filters.MethodFilter(method='filter_is_active')
 
     class Meta:
         model = get_user_model()
-        fields = ('username', 'first_name', 'last_name', 'full_name', 'email', 'groups', )
+        fields = ('username', 'first_name', 'last_name', 'full_name', 'email', 'groups', 'is_active', )
+
+    def filter_is_active(self, queryset, name, value):
+        if value == 'true':
+            value = True
+        else:
+            value = False
+        return queryset.filter(is_active=value)
 
 
 class AlbumFilter(FilterMixin, django_filters.FilterSet):
